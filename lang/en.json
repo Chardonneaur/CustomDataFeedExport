@@ -1,0 +1,6 @@
+{
+    "CustomDataFeedExport": {
+        "PluginDescription": "Export visit log data as CSV with customisable dimension selection, column ordering, and row-level filtering.",
+        "MenuTitle": "Data Feed Export"
+    }
+}

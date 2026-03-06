@@ -1,0 +1,31 @@
+{
+    "name": "CustomDataFeedExport",
+    "description": "Create custom data feed configurations to export visit log data as CSV with dimension ordering, search, and advanced filtering capabilities.",
+    "version": "1.2.0",
+    "theme": false,
+    "require": {
+        "matomo": ">=5.0.0-b1,<6.0.0-b1",
+        "php": ">=8.1.0"
+    },
+    "authors": [
+        {
+            "name": "Chardonneaur",
+            "homepage": "https://github.com/Chardonneaur"
+        }
+    ],
+    "license": "GPL v3+",
+    "homepage": "https://github.com/Chardonneaur/CustomDataFeedExport",
+    "keywords": [
+        "export",
+        "csv",
+        "data feed",
+        "visit log",
+        "dimensions",
+        "filter",
+        "reporting"
+    ],
+    "support": {
+        "issues": "https://github.com/Chardonneaur/CustomDataFeedExport/issues",
+        "source": "https://github.com/Chardonneaur/CustomDataFeedExport"
+    }
+}

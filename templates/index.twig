@@ -1,0 +1,1394 @@
+{% extends 'admin.twig' %}
+
+{% set title %}Data Feed Export{% endset %}
+
+{% block content %}
+<div vue-entry="CoreHome.ContentBlock" content-title="'Data Feed Export'">
+    <p>Create data feed configurations to export visit log data with selected dimensions as CSV.</p>
+</div>
+
+<div id="datafeed-container">
+    <div vue-entry="CoreHome.ContentBlock" content-title="'Your Data Feeds'">
+        <div id="feeds-list">
+            <span class="loadingPiwik">
+                {% include "@CoreHome/_loader.twig" %}
+                Loading feeds...
+            </span>
+        </div>
+        <br />
+        <div style="display: flex; gap: 10px;">
+            <button class="btn" id="btn-new-feed">+ Create New Feed</button>
+            <button class="btn btn-danger" id="btn-delete-all-feeds">Delete All Feeds</button>
+        </div>
+    </div>
+
+    <div id="feed-form-container" style="display: none;">
+        <div class="card">
+            <div class="card-content">
+                <h2 id="form-title" style="margin-top: 0;">Create New Feed</h2>
+            <form id="feed-form">
+                <input type="hidden" id="feed-id" value="">
+
+                <div class="row">
+                    <div class="col s12 m6">
+                        <div class="form-group">
+                            <label for="feed-name">Feed Name *</label>
+                            <div style="display: flex; gap: 5px;">
+                                <input type="text" id="feed-name" class="browser-default" required placeholder="My Export Feed" style="flex: 1;">
+                                <button type="button" class="btn btn-flat btn-small" id="btn-autofill-name" title="Auto-fill name from selected dimensions">Auto-fill</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col s12 m6">
+                        <div class="form-group">
+                            <label for="feed-description">Description</label>
+                            <input type="text" id="feed-description" class="browser-default" placeholder="Optional description">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col s12">
+                        <div class="form-group">
+                            <label>Select Dimensions to Export *</label>
+                            <p style="color: #666; font-size: 12px;">Select the fields you want to include in your CSV export</p>
+                            <div style="margin: 10px 0;">
+                                <button type="button" class="btn btn-flat btn-small" id="btn-select-all">Select All</button>
+                                <button type="button" class="btn btn-flat btn-small" id="btn-deselect-all">Deselect All</button>
+                                <button type="button" class="btn btn-flat btn-small" id="btn-select-common">Select Common</button>
+                            </div>
+                            <div style="margin: 10px 0;">
+                                <input type="text" id="dimension-search" class="browser-default" placeholder="Search dimensions..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <div id="dimensions-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px;">
+                                <span class="loadingPiwik">
+                                    {% include "@CoreHome/_loader.twig" %}
+                                    Loading dimensions...
+                                </span>
+                            </div>
+                            <div id="action-level-warning">
+                                <span class="warning-icon">⚠</span>
+                                <strong>Action-level dimensions selected:</strong> The export will create one row per action (pageview, event, download, etc.) instead of one row per visit. Visit data will be duplicated for each action.
+                            </div>
+                            <div id="selected-order-panel" style="display: none;">
+                                <h4>Selected Fields (in export order)</h4>
+                                <p style="color: #666; font-size: 12px; margin: 0 0 10px 0;">Drag and drop items to reorder, or use the arrow buttons</p>
+                                <div id="selected-order-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col s12">
+                        <div class="form-group">
+                            <label>Filters (optional)</label>
+                            <p style="color: #666; font-size: 12px;">Add filters to include only rows matching specific criteria. All filters must match (AND logic).</p>
+                            <div id="filters-container">
+                                <div id="filters-list"></div>
+                                <button type="button" class="btn btn-flat btn-small" id="btn-add-filter">+ Add Filter</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row" style="margin-top: 20px;">
+                    <div class="col s12">
+                        <button type="submit" class="btn">Save Feed</button>
+                        <button type="button" class="btn btn-flat" id="btn-cancel">Cancel</button>
+                    </div>
+                </div>
+            </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="export-form-container" style="display: none;">
+        <div class="card">
+            <div class="card-content">
+                <h2 style="margin-top: 0;">Export Feed: <span id="export-feed-name"></span></h2>
+            <form id="export-form">
+                <input type="hidden" id="export-feed-id" value="">
+
+                <div class="row">
+                    <div class="col s12 m3">
+                        <div class="form-group">
+                            <label for="export-period">Period</label>
+                            <select id="export-period" class="browser-default">
+                                <option value="day">Day</option>
+                                <option value="week">Week</option>
+                                <option value="month">Month</option>
+                                <option value="year">Year</option>
+                                <option value="range">Custom date range</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Single date (day / week / month / year) -->
+                    <div class="col s12 m3" id="export-single-date-col">
+                        <div class="form-group">
+                            <label for="export-date">Date</label>
+                            <div class="date-input-wrap">
+                                <input type="text" id="export-date" class="browser-default export-date-input" autocomplete="off" readonly placeholder="YYYY-MM-DD">
+                                <span class="date-input-icon">&#128197;</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Date range pickers (shown only when period = range) -->
+                    <div class="col s12 m3" id="export-range-start-col" style="display:none;">
+                        <div class="form-group">
+                            <label for="export-date-start">Start date</label>
+                            <div class="date-input-wrap">
+                                <input type="text" id="export-date-start" class="browser-default export-date-input" autocomplete="off" readonly placeholder="YYYY-MM-DD">
+                                <span class="date-input-icon">&#128197;</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col s12 m3" id="export-range-end-col" style="display:none;">
+                        <div class="form-group">
+                            <label for="export-date-end">End date</label>
+                            <div class="date-input-wrap">
+                                <input type="text" id="export-date-end" class="browser-default export-date-input" autocomplete="off" readonly placeholder="YYYY-MM-DD">
+                                <span class="date-input-icon">&#128197;</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col s12 m3">
+                        <div class="form-group">
+                            <label for="export-limit">Max Rows</label>
+                            <input type="number" id="export-limit" class="browser-default" value="1000" min="1" max="100000">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row" style="margin-top: 20px;">
+                    <div class="col s12">
+                        <button type="submit" class="btn">Download CSV</button>
+                        <button type="button" class="btn btn-flat" id="btn-cancel-export">Cancel</button>
+                    </div>
+                </div>
+            </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    #datafeed-container .form-group {
+        margin-bottom: 15px;
+    }
+    #datafeed-container label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    #datafeed-container input[type="text"],
+    #datafeed-container input[type="number"],
+    #datafeed-container select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    #dimensions-list label {
+        font-weight: normal;
+        display: inline-block;
+        width: 280px;
+        margin: 5px 10px 5px 0;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 3px;
+        position: relative;
+    }
+    #dimensions-list label:hover {
+        background: #f0f0f0;
+    }
+    #dimensions-list label.selected {
+        background: #e3f2fd;
+        border: 1px solid #2196F3;
+        margin: 4px 9px 4px -1px;
+    }
+    #dimensions-list label.action-level {
+        border-left: 3px solid #ff9800;
+    }
+    #action-level-warning {
+        background: #fff3e0;
+        border: 1px solid #ff9800;
+        border-radius: 4px;
+        padding: 10px;
+        margin-top: 10px;
+        display: none;
+    }
+    #action-level-warning .warning-icon {
+        color: #ff9800;
+        margin-right: 5px;
+    }
+    .selection-order-badge {
+        display: inline-block;
+        background: #2196F3;
+        color: white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        text-align: center;
+        line-height: 20px;
+        font-size: 11px;
+        font-weight: bold;
+        margin-right: 5px;
+        vertical-align: middle;
+    }
+    #selected-order-panel {
+        margin-top: 15px;
+        padding: 10px;
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    #selected-order-panel h4 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #333;
+    }
+    .selected-item {
+        display: flex;
+        align-items: center;
+        padding: 5px 8px;
+        margin: 3px 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        font-size: 13px;
+        cursor: grab;
+        user-select: none;
+    }
+    .selected-item:active {
+        cursor: grabbing;
+    }
+    .selected-item.dragging {
+        opacity: 0.5;
+        background: #e3f2fd;
+    }
+    .selected-item.drag-over {
+        border-top: 2px solid #2196F3;
+        margin-top: 1px;
+    }
+    .selected-item .drag-handle {
+        color: #999;
+        margin-right: 8px;
+        font-size: 14px;
+        cursor: grab;
+    }
+    .selected-item .drag-handle:active {
+        cursor: grabbing;
+    }
+    .selected-item .order-num {
+        background: #2196F3;
+        color: white;
+        border-radius: 50%;
+        width: 22px;
+        height: 22px;
+        text-align: center;
+        line-height: 22px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-right: 10px;
+        flex-shrink: 0;
+    }
+    .selected-item .item-label {
+        flex-grow: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .selected-item .move-btns {
+        display: flex;
+        gap: 3px;
+        margin-left: 10px;
+    }
+    .selected-item .move-btns button {
+        padding: 2px 6px;
+        font-size: 11px;
+        cursor: pointer;
+        border: 1px solid #ccc;
+        background: #fff;
+        border-radius: 3px;
+    }
+    .selected-item .move-btns button:hover {
+        background: #e0e0e0;
+    }
+    .selected-item .remove-btn {
+        color: #dc3545;
+        border-color: #dc3545;
+    }
+    .selected-item .remove-btn:hover {
+        background: #ffebee;
+    }
+    #filters-container {
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 4px;
+        background: #fafafa;
+    }
+    .filter-row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 10px;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .filter-row select, .filter-row input[type="text"] {
+        padding: 6px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        font-size: 13px;
+    }
+    .filter-row .filter-dimension {
+        width: 200px;
+    }
+    .filter-row .filter-operator {
+        width: 140px;
+    }
+    .filter-row .filter-value {
+        flex: 1;
+        min-width: 150px;
+    }
+    .filter-row .btn-remove-filter {
+        padding: 4px 8px;
+        font-size: 14px;
+        color: #dc3545;
+        border: 1px solid #dc3545;
+        background: white;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    .filter-row .btn-remove-filter:hover {
+        background: #ffebee;
+    }
+    #filters-list:empty + #btn-add-filter {
+        margin-top: 0;
+    }
+    #btn-add-filter {
+        margin-top: 10px;
+    }
+    .searchable-dropdown {
+        position: relative;
+        width: 220px;
+    }
+    .searchable-dropdown .dropdown-selected {
+        padding: 6px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        font-size: 13px;
+        background: white;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-height: 32px;
+    }
+    .searchable-dropdown .dropdown-selected:after {
+        content: '\25BC';
+        font-size: 10px;
+        color: #666;
+    }
+    .searchable-dropdown .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ccc;
+        border-top: none;
+        border-radius: 0 0 3px 3px;
+        max-height: 250px;
+        overflow-y: auto;
+        z-index: 1000;
+        display: none;
+    }
+    .searchable-dropdown.open .dropdown-menu {
+        display: block;
+    }
+    .searchable-dropdown .dropdown-search {
+        width: 100%;
+        padding: 8px;
+        border: none;
+        border-bottom: 1px solid #eee;
+        font-size: 13px;
+        box-sizing: border-box;
+    }
+    .searchable-dropdown .dropdown-search:focus {
+        outline: none;
+    }
+    .searchable-dropdown .dropdown-option {
+        padding: 8px 10px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    .searchable-dropdown .dropdown-option:hover {
+        background: #f0f0f0;
+    }
+    .searchable-dropdown .dropdown-option.selected {
+        background: #e3f2fd;
+    }
+    .searchable-dropdown .dropdown-option.hidden {
+        display: none;
+    }
+    #dimensions-list input[type="checkbox"] {
+        margin-right: 8px;
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        opacity: 1 !important;
+        position: relative !important;
+        pointer-events: auto !important;
+        -webkit-appearance: checkbox !important;
+        -moz-appearance: checkbox !important;
+        appearance: checkbox !important;
+    }
+    .feed-item {
+        padding: 15px;
+        border: 1px solid #ddd;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        background: #fafafa;
+    }
+    .feed-item h4 {
+        margin: 0 0 10px 0;
+    }
+    .feed-item .feed-description {
+        color: #666;
+        margin-bottom: 10px;
+    }
+    .feed-item .feed-dimensions {
+        font-size: 12px;
+        color: #888;
+        margin-bottom: 10px;
+    }
+    .feed-item .feed-actions button {
+        margin-right: 5px;
+    }
+    .btn-flat {
+        background: transparent;
+        border: 1px solid #ddd;
+    }
+    .btn-danger {
+        background: #dc3545;
+    }
+    .btn-success {
+        background: #28a745;
+    }
+    .btn-small {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+    .no-feeds {
+        color: #666;
+        font-style: italic;
+    }
+    .card {
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    .card-content {
+        padding: 20px;
+    }
+    .card-content h2 {
+        font-size: 18px;
+        font-weight: 500;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
+    }
+    .date-input-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+    .date-input-wrap .export-date-input {
+        width: 100%;
+        padding-right: 30px;
+        cursor: pointer;
+        background-color: #fff;
+        box-sizing: border-box;
+    }
+    .date-input-wrap .date-input-icon {
+        position: absolute;
+        right: 8px;
+        font-size: 14px;
+        color: #888;
+        pointer-events: none;
+        line-height: 1;
+    }
+    /* Ensure the datepicker popup renders above the form overlay */
+    .ui-datepicker {
+        z-index: 9999 !important;
+        font-size: 13px !important;
+    }
+</style>
+
+<script type="text/javascript">
+(function($) {
+    var idSite = {{ idSite|json_encode }};
+    var availableDimensions = [];
+    var selectionOrder = []; // Track selection order
+    var feedFilters = []; // Track filters
+
+    var filterOperators = [
+        { value: 'equals', label: 'Equals' },
+        { value: 'not_equals', label: 'Not equals' },
+        { value: 'contains', label: 'Contains' },
+        { value: 'not_contains', label: 'Does not contain' },
+        { value: 'starts_with', label: 'Starts with' },
+        { value: 'ends_with', label: 'Ends with' },
+        { value: 'regex', label: 'Matches regex' },
+        { value: 'not_regex', label: 'Does not match regex' },
+        { value: 'is_empty', label: 'Is empty' },
+        { value: 'is_not_empty', label: 'Is not empty' }
+    ];
+
+    function escHtml(str) {
+        if (str == null) str = '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function loadDimensions() {
+        var ajaxRequest = new ajaxHelper();
+        ajaxRequest.addParams({
+            module: 'API',
+            method: 'CustomDataFeedExport.getAvailableDimensionsList',
+            format: 'JSON'
+        }, 'get');
+        ajaxRequest.setCallback(function(data) {
+            availableDimensions = data;
+            renderDimensionsList();
+        });
+        ajaxRequest.setErrorCallback(function(xhr) {
+            console.error('Error loading dimensions:', xhr);
+            $('#dimensions-list').html('<p style="color: red;">Error loading dimensions. Please refresh the page.</p>');
+        });
+        ajaxRequest.send();
+    }
+
+    function getDimensionLabel(key) {
+        var found = availableDimensions.find(function(d) { return d.key === key; });
+        return found ? found.label : key;
+    }
+
+    function renderDimensionsList(selectedDimensions) {
+        selectedDimensions = selectedDimensions || [];
+        // Initialize selectionOrder from selectedDimensions (preserves saved order)
+        selectionOrder = selectedDimensions.slice();
+
+        var html = '';
+        if (!availableDimensions || availableDimensions.length === 0) {
+            html = '<p style="color: orange;">No dimensions available.</p>';
+        } else {
+            availableDimensions.forEach(function(dim, index) {
+                var isSelected = selectionOrder.indexOf(dim.key) !== -1;
+                var checked = isSelected ? 'checked' : '';
+                var selectedClass = isSelected ? 'selected' : '';
+                var actionClass = dim.isActionLevel ? 'action-level' : '';
+                var orderNum = isSelected ? selectionOrder.indexOf(dim.key) + 1 : '';
+                var id = 'dim_' + dim.key;
+                var badge = isSelected ? '<span class="selection-order-badge">' + orderNum + '</span>' : '';
+                html += '<label for="' + id + '" class="' + selectedClass + ' ' + actionClass + '" data-key="' + dim.key + '" data-action-level="' + (dim.isActionLevel ? '1' : '0') + '">' + badge + '<input type="checkbox" id="' + id + '" name="dimensions" value="' + dim.key + '" ' + checked + '> ' + dim.label + '</label>';
+            });
+        }
+        $('#dimensions-list').html(html);
+        updateSelectedOrderPanel();
+        updateActionLevelWarning();
+    }
+
+    function updateSelectionBadges() {
+        // Update all checkbox labels with their current order number
+        $('#dimensions-list label').each(function() {
+            var $label = $(this);
+            var key = $label.data('key');
+            var orderIndex = selectionOrder.indexOf(key);
+
+            // Remove existing badge
+            $label.find('.selection-order-badge').remove();
+
+            if (orderIndex !== -1) {
+                $label.addClass('selected');
+                var badge = '<span class="selection-order-badge">' + (orderIndex + 1) + '</span>';
+                $label.prepend(badge);
+            } else {
+                $label.removeClass('selected');
+            }
+        });
+        updateSelectedOrderPanel();
+        updateActionLevelWarning();
+    }
+
+    function updateActionLevelWarning() {
+        // Check if any selected dimension is action-level
+        var hasActionLevel = false;
+        selectionOrder.forEach(function(key) {
+            var dim = availableDimensions.find(function(d) { return d.key === key; });
+            if (dim && dim.isActionLevel) {
+                hasActionLevel = true;
+            }
+        });
+
+        if (hasActionLevel) {
+            $('#action-level-warning').show();
+        } else {
+            $('#action-level-warning').hide();
+        }
+    }
+
+    function updateSelectedOrderPanel() {
+        if (selectionOrder.length === 0) {
+            $('#selected-order-panel').hide();
+            return;
+        }
+
+        var html = '';
+        selectionOrder.forEach(function(key, index) {
+            var label = getDimensionLabel(key);
+            html += '<div class="selected-item" data-key="' + key + '" data-index="' + index + '" draggable="true">';
+            html += '<span class="drag-handle" title="Drag to reorder">\u2630</span>';
+            html += '<span class="order-num">' + (index + 1) + '</span>';
+            html += '<span class="item-label" title="' + label + '">' + label + '</span>';
+            html += '<span class="move-btns">';
+            if (index > 0) {
+                html += '<button type="button" class="move-up" title="Move up">\u25B2</button>';
+            }
+            if (index < selectionOrder.length - 1) {
+                html += '<button type="button" class="move-down" title="Move down">\u25BC</button>';
+            }
+            html += '<button type="button" class="remove-btn" title="Remove">\u2715</button>';
+            html += '</span>';
+            html += '</div>';
+        });
+
+        $('#selected-order-list').html(html);
+        $('#selected-order-panel').show();
+    }
+
+    function handleDimensionChange(e) {
+        var $checkbox = $(e.target);
+        var key = $checkbox.val();
+
+        if ($checkbox.is(':checked')) {
+            // Add to selection order if not already present
+            if (selectionOrder.indexOf(key) === -1) {
+                selectionOrder.push(key);
+            }
+        } else {
+            // Remove from selection order
+            var idx = selectionOrder.indexOf(key);
+            if (idx !== -1) {
+                selectionOrder.splice(idx, 1);
+            }
+        }
+
+        updateSelectionBadges();
+    }
+
+    function moveItem(key, direction) {
+        var idx = selectionOrder.indexOf(key);
+        if (idx === -1) return;
+
+        var newIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (newIdx < 0 || newIdx >= selectionOrder.length) return;
+
+        // Swap
+        var temp = selectionOrder[idx];
+        selectionOrder[idx] = selectionOrder[newIdx];
+        selectionOrder[newIdx] = temp;
+
+        updateSelectionBadges();
+    }
+
+    function removeItem(key) {
+        var idx = selectionOrder.indexOf(key);
+        if (idx !== -1) {
+            selectionOrder.splice(idx, 1);
+            $('#dim_' + key).prop('checked', false);
+            updateSelectionBadges();
+        }
+    }
+
+    function renderFilters() {
+        var html = '';
+        feedFilters.forEach(function(filter, index) {
+            html += '<div class="filter-row" data-index="' + index + '">';
+
+            // Searchable dimension dropdown
+            var selectedLabel = '-- Select dimension --';
+            if (filter.dimension) {
+                var dim = availableDimensions.find(function(d) { return d.key === filter.dimension; });
+                if (dim) selectedLabel = dim.label;
+            }
+
+            html += '<div class="searchable-dropdown" data-field="dimension" data-value="' + (filter.dimension || '') + '">';
+            html += '<div class="dropdown-selected"><span class="selected-text">' + selectedLabel + '</span></div>';
+            html += '<div class="dropdown-menu">';
+            html += '<input type="text" class="dropdown-search" placeholder="Search dimensions...">';
+            html += '<div class="dropdown-option" data-value="">-- Select dimension --</div>';
+            availableDimensions.forEach(function(dim) {
+                var selectedClass = filter.dimension === dim.key ? 'selected' : '';
+                html += '<div class="dropdown-option ' + selectedClass + '" data-value="' + dim.key + '">' + dim.label + '</div>';
+            });
+            html += '</div>';
+            html += '</div>';
+
+            // Operator dropdown
+            html += '<select class="filter-operator" data-field="operator">';
+            filterOperators.forEach(function(op) {
+                var selected = filter.operator === op.value ? 'selected' : '';
+                html += '<option value="' + op.value + '" ' + selected + '>' + op.label + '</option>';
+            });
+            html += '</select>';
+
+            // Value input (hidden for is_empty/is_not_empty)
+            var hideValue = (filter.operator === 'is_empty' || filter.operator === 'is_not_empty');
+            var valueStyle = hideValue ? 'display: none;' : '';
+            html += '<input type="text" class="filter-value" data-field="value" placeholder="Filter value..." value="' + escHtml(filter.value) + '" style="' + valueStyle + '">';
+
+            // Remove button
+            html += '<button type="button" class="btn-remove-filter" title="Remove filter">&times;</button>';
+
+            html += '</div>';
+        });
+
+        $('#filters-list').html(html);
+    }
+
+    function addFilter() {
+        feedFilters.push({
+            dimension: '',
+            operator: 'contains',
+            value: ''
+        });
+        renderFilters();
+    }
+
+    function removeFilter(index) {
+        feedFilters.splice(index, 1);
+        renderFilters();
+    }
+
+    function updateFilter(index, field, value) {
+        if (feedFilters[index]) {
+            feedFilters[index][field] = value;
+
+            // Hide/show value input based on operator
+            if (field === 'operator') {
+                var $row = $('.filter-row[data-index="' + index + '"]');
+                if (value === 'is_empty' || value === 'is_not_empty') {
+                    $row.find('.filter-value').hide();
+                } else {
+                    $row.find('.filter-value').show();
+                }
+            }
+        }
+    }
+
+    function loadFeeds() {
+        var ajaxRequest = new ajaxHelper();
+        ajaxRequest.addParams({
+            module: 'API',
+            method: 'CustomDataFeedExport.getFeeds',
+            idSite: idSite,
+            format: 'JSON'
+        }, 'get');
+        ajaxRequest.setCallback(function(data) {
+            renderFeedsList(data);
+        });
+        ajaxRequest.send();
+    }
+
+    function renderFeedsList(feeds) {
+        if (!feeds || feeds.length === 0) {
+            $('#feeds-list').html('<p class="no-feeds">No data feeds configured yet. Create your first feed below.</p>');
+            return;
+        }
+
+        var html = '';
+        feeds.forEach(function(feed) {
+            var dimensionLabels = [];
+            if (feed.dimensions) {
+                feed.dimensions.forEach(function(dim) {
+                    var found = availableDimensions.find(function(d) { return d.key === dim; });
+                    dimensionLabels.push(found ? found.label : dim);
+                });
+            }
+
+            html += '<div class="feed-item" data-id="' + feed.idfeed + '">';
+            html += '<h4>' + $('<div>').text(feed.name).html() + '</h4>';
+            if (feed.description) {
+                html += '<div class="feed-description">' + $('<div>').text(feed.description).html() + '</div>';
+            }
+            html += '<div class="feed-dimensions"><strong>Dimensions:</strong> ' + dimensionLabels.map(escHtml).join(', ') + '</div>';
+            if (feed.filters && feed.filters.length > 0) {
+                html += '<div class="feed-dimensions"><strong>Filters:</strong> ' + feed.filters.length + ' filter(s) applied</div>';
+            }
+
+            if (feed.token) {
+                html += '<div class="feed-token" style="margin-bottom:10px;font-size:12px;">';
+                html += '<strong>Token:</strong> ';
+                html += '<code style="background:#f5f5f5;padding:2px 6px;border-radius:3px;word-break:break-all;user-select:all;">' + escHtml(feed.token) + '</code>';
+                html += ' <button type="button" class="btn btn-flat btn-small btn-copy-token" data-token="' + escHtml(feed.token) + '">Copy</button>';
+                html += '</div>';
+            }
+
+            html += '<div class="feed-actions">';
+            html += '<button class="btn btn-success btn-export" data-id="' + feed.idfeed + '" data-name="' + escHtml(feed.name) + '">Export CSV</button>';
+            html += '<button class="btn btn-edit" data-id="' + feed.idfeed + '">Edit</button>';
+            html += '<button class="btn btn-danger btn-delete" data-id="' + feed.idfeed + '">Delete</button>';
+            html += '</div>';
+            html += '</div>';
+        });
+
+        $('#feeds-list').html(html);
+    }
+
+    function showForm(feed) {
+        // Show form first, then render dimensions
+        $('#export-form-container').hide();
+        $('#feed-form-container').show();
+
+        if (feed) {
+            $('#form-title').text('Edit Feed');
+            $('#feed-id').val(feed.idfeed);
+            $('#feed-name').val(feed.name);
+            $('#feed-description').val(feed.description || '');
+            // Pass dimensions in saved order
+            renderDimensionsList(feed.dimensions || []);
+            // Load filters
+            feedFilters = feed.filters || [];
+            renderFilters();
+        } else {
+            $('#form-title').text('Create New Feed');
+            $('#feed-id').val('');
+            $('#feed-name').val('');
+            $('#feed-description').val('');
+            selectionOrder = []; // Reset selection order for new feed
+            feedFilters = []; // Reset filters for new feed
+            renderDimensionsList([]);
+            renderFilters();
+        }
+
+    }
+
+    function hideForm() {
+        $('#feed-form-container').hide();
+        $('#feed-form')[0].reset();
+    }
+
+    function showExportForm(idFeed, feedName) {
+        $('#export-feed-id').val(idFeed);
+        $('#export-feed-name').text(feedName);
+        $('#feed-form-container').hide();
+        $('#export-form-container').show();
+    }
+
+    function hideExportForm() {
+        $('#export-form-container').hide();
+    }
+
+    function saveFeed(e) {
+        e.preventDefault();
+
+        var idFeed = $('#feed-id').val();
+        var name = $('#feed-name').val().trim();
+        var description = $('#feed-description').val().trim();
+
+        // Use selectionOrder array which preserves the order user selected/arranged
+        var dimensions = selectionOrder.slice();
+
+        if (!name) {
+            alert('Please enter a feed name');
+            return;
+        }
+
+        if (dimensions.length === 0) {
+            alert('Please select at least one dimension. Debug: found ' + $('#dimensions-list input[name="dimensions"]').length + ' checkboxes total.');
+            return;
+        }
+
+        // Filter out incomplete filters
+        var validFilters = feedFilters.filter(function(f) {
+            return f.dimension && f.operator;
+        });
+
+        var method = idFeed ? 'CustomDataFeedExport.updateFeed' : 'CustomDataFeedExport.createFeed';
+        var postParams = {
+            idSite: idSite,
+            name: name,
+            description: description,
+            dimensions: JSON.stringify(dimensions),
+            filters: JSON.stringify(validFilters)
+        };
+
+        if (idFeed) {
+            postParams.idFeed = idFeed;
+        }
+
+        var ajaxRequest = new ajaxHelper();
+        ajaxRequest.addParams({
+            module: 'API',
+            method: method,
+            format: 'JSON'
+        }, 'get');
+        ajaxRequest.addParams(postParams, 'post');
+        ajaxRequest.setCallback(function(data) {
+            hideForm();
+            loadFeeds();
+        });
+        ajaxRequest.setErrorCallback(function(xhr) {
+            var error = 'An error occurred';
+            try {
+                var response = JSON.parse(xhr.responseText);
+                if (response.result === 'error') {
+                    error = response.message;
+                }
+            } catch(e) {}
+            alert(error);
+        });
+        ajaxRequest.send();
+    }
+
+    function deleteFeed(idFeed) {
+        if (!confirm('Are you sure you want to delete this feed?')) {
+            return;
+        }
+
+        var ajaxRequest = new ajaxHelper();
+        ajaxRequest.addParams({
+            module: 'API',
+            method: 'CustomDataFeedExport.deleteFeed',
+            format: 'JSON'
+        }, 'get');
+        ajaxRequest.addParams({
+            idFeed: idFeed
+        }, 'post');
+        ajaxRequest.setCallback(function(data) {
+            loadFeeds();
+        });
+        ajaxRequest.send();
+    }
+
+    function editFeed(idFeed) {
+        var ajaxRequest = new ajaxHelper();
+        ajaxRequest.addParams({
+            module: 'API',
+            method: 'CustomDataFeedExport.getFeed',
+            idFeed: idFeed,
+            format: 'JSON'
+        }, 'get');
+        ajaxRequest.setCallback(function(data) {
+            showForm(data);
+        });
+        ajaxRequest.send();
+    }
+
+    function onExportPeriodChange() {
+        var period = $('#export-period').val();
+        if (period === 'range') {
+            $('#export-single-date-col').hide();
+            $('#export-range-start-col').show();
+            $('#export-range-end-col').show();
+        } else {
+            $('#export-single-date-col').show();
+            $('#export-range-start-col').hide();
+            $('#export-range-end-col').hide();
+        }
+    }
+
+    function exportFeed(e) {
+        e.preventDefault();
+
+        var idFeed    = $('#export-feed-id').val();
+        var period    = $('#export-period').val();
+        var filterLimit = parseInt($('#export-limit').val(), 10) || 1000;
+        var date;
+
+        if (period === 'range') {
+            var start = $('#export-date-start').val();
+            var end   = $('#export-date-end').val();
+            if (!start || !end) {
+                alert('Please select both a start date and an end date.');
+                return;
+            }
+            if (start > end) {
+                alert('Start date must be before or equal to end date.');
+                return;
+            }
+            date = start + ',' + end;
+        } else {
+            date = $('#export-date').val();
+            if (!date) {
+                alert('Please select a date.');
+                return;
+            }
+        }
+
+        var url = '?module=CustomDataFeedExport&action=download';
+        url += '&idSite='        + encodeURIComponent(idSite);
+        url += '&idFeed='        + encodeURIComponent(idFeed);
+        url += '&period='        + encodeURIComponent(period);
+        url += '&date='          + encodeURIComponent(date);
+        url += '&filter_limit='  + encodeURIComponent(filterLimit);
+
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = '';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        hideExportForm();
+    }
+
+    // Common dimensions that users typically want
+    var commonDimensions = [
+        'idVisit', 'visitorId', 'serverDate', 'serverTimePretty',
+        'visitDuration', 'actions', 'referrerType', 'referrerName',
+        'country', 'city', 'deviceType', 'browser', 'operatingSystem',
+        'entryPageUrl', 'exitPageUrl'
+    ];
+
+    $(document).ready(function() {
+        loadDimensions();
+        loadFeeds();
+
+        $('#btn-new-feed').on('click', function() {
+            showForm(null);
+        });
+
+        $('#btn-cancel').on('click', hideForm);
+        $('#btn-cancel-export').on('click', hideExportForm);
+
+        // Initialise jQuery UI datepickers
+        var dpDefaults = {
+            dateFormat:   'yy-mm-dd',
+            changeMonth:  true,
+            changeYear:   true,
+            yearRange:    '-5:+1',
+            showAnim:     'fadeIn'
+        };
+
+        var today = new Date();
+        var rangeStart = new Date();
+        rangeStart.setDate(rangeStart.getDate() - 29);
+
+        $('#export-date').datepicker(dpDefaults).datepicker('setDate', today);
+
+        $('#export-date-start').datepicker($.extend({}, dpDefaults, {
+            onSelect: function(dateText) {
+                $('#export-date-end').datepicker('option', 'minDate', dateText);
+            }
+        })).datepicker('setDate', rangeStart);
+
+        $('#export-date-end').datepicker($.extend({}, dpDefaults, {
+            onSelect: function(dateText) {
+                $('#export-date-start').datepicker('option', 'maxDate', dateText);
+            }
+        })).datepicker('setDate', today);
+
+        // Toggle date inputs when period changes
+        $('#export-period').on('change', onExportPeriodChange);
+
+        $('#feed-form').on('submit', saveFeed);
+        $('#export-form').on('submit', exportFeed);
+
+        // Handle checkbox changes for selection order tracking
+        $(document).on('change', '#dimensions-list input[type="checkbox"]', handleDimensionChange);
+
+        // Auto-fill feed name from selected dimensions
+        $('#btn-autofill-name').on('click', function() {
+            if (selectionOrder.length === 0) {
+                alert('Please select at least one dimension first.');
+                return;
+            }
+
+            var names = selectionOrder.map(function(key) {
+                return getDimensionLabel(key);
+            });
+
+            // Join names with " + " separator, truncate if too long
+            var feedName = names.join(' + ');
+            if (feedName.length > 100) {
+                feedName = feedName.substring(0, 97) + '...';
+            }
+
+            $('#feed-name').val(feedName);
+        });
+
+        // Search/filter dimensions
+        $('#dimension-search').on('input', function() {
+            var searchTerm = $(this).val().toLowerCase().trim();
+
+            $('#dimensions-list label').each(function() {
+                var $label = $(this);
+                var dimensionText = $label.text().toLowerCase();
+                var key = $label.data('key').toLowerCase();
+
+                if (searchTerm === '' || dimensionText.indexOf(searchTerm) !== -1 || key.indexOf(searchTerm) !== -1) {
+                    $label.show();
+                } else {
+                    $label.hide();
+                }
+            });
+        });
+
+        // Select All button - adds all in default order
+        $('#btn-select-all').on('click', function() {
+            selectionOrder = [];
+            availableDimensions.forEach(function(dim) {
+                selectionOrder.push(dim.key);
+            });
+            $('#dimensions-list input[type="checkbox"]').prop('checked', true);
+            updateSelectionBadges();
+        });
+
+        // Deselect All button
+        $('#btn-deselect-all').on('click', function() {
+            selectionOrder = [];
+            $('#dimensions-list input[type="checkbox"]').prop('checked', false);
+            updateSelectionBadges();
+        });
+
+        // Select Common dimensions button - in the common order
+        $('#btn-select-common').on('click', function() {
+            selectionOrder = [];
+            $('#dimensions-list input[type="checkbox"]').prop('checked', false);
+            commonDimensions.forEach(function(dim) {
+                var $checkbox = $('#dim_' + dim);
+                if ($checkbox.length) {
+                    $checkbox.prop('checked', true);
+                    selectionOrder.push(dim);
+                }
+            });
+            updateSelectionBadges();
+        });
+
+        // Move up button in selected order panel
+        $(document).on('click', '#selected-order-list .move-up', function(e) {
+            e.preventDefault();
+            var key = $(this).closest('.selected-item').data('key');
+            moveItem(key, 'up');
+        });
+
+        // Move down button in selected order panel
+        $(document).on('click', '#selected-order-list .move-down', function(e) {
+            e.preventDefault();
+            var key = $(this).closest('.selected-item').data('key');
+            moveItem(key, 'down');
+        });
+
+        // Remove button in selected order panel
+        $(document).on('click', '#selected-order-list .remove-btn', function(e) {
+            e.preventDefault();
+            var key = $(this).closest('.selected-item').data('key');
+            removeItem(key);
+        });
+
+        // Drag and drop for reordering
+        var draggedItem = null;
+        var draggedKey = null;
+
+        $(document).on('dragstart', '#selected-order-list .selected-item', function(e) {
+            draggedItem = this;
+            draggedKey = $(this).data('key');
+            $(this).addClass('dragging');
+            e.originalEvent.dataTransfer.effectAllowed = 'move';
+            e.originalEvent.dataTransfer.setData('text/plain', draggedKey);
+        });
+
+        $(document).on('dragend', '#selected-order-list .selected-item', function(e) {
+            $(this).removeClass('dragging');
+            $('#selected-order-list .selected-item').removeClass('drag-over');
+            draggedItem = null;
+            draggedKey = null;
+        });
+
+        $(document).on('dragover', '#selected-order-list .selected-item', function(e) {
+            e.preventDefault();
+            e.originalEvent.dataTransfer.dropEffect = 'move';
+            if (this !== draggedItem) {
+                $('#selected-order-list .selected-item').removeClass('drag-over');
+                $(this).addClass('drag-over');
+            }
+        });
+
+        $(document).on('dragleave', '#selected-order-list .selected-item', function(e) {
+            $(this).removeClass('drag-over');
+        });
+
+        $(document).on('drop', '#selected-order-list .selected-item', function(e) {
+            e.preventDefault();
+            $(this).removeClass('drag-over');
+
+            if (this === draggedItem) return;
+
+            var targetKey = $(this).data('key');
+            var fromIndex = selectionOrder.indexOf(draggedKey);
+            var toIndex = selectionOrder.indexOf(targetKey);
+
+            if (fromIndex !== -1 && toIndex !== -1) {
+                // Remove from old position
+                selectionOrder.splice(fromIndex, 1);
+                // Insert at new position
+                selectionOrder.splice(toIndex, 0, draggedKey);
+                // Update UI
+                updateSelectionBadges();
+            }
+        });
+
+        // Add filter button
+        $('#btn-add-filter').on('click', function() {
+            addFilter();
+        });
+
+        // Remove filter button
+        $(document).on('click', '.btn-remove-filter', function() {
+            var index = $(this).closest('.filter-row').data('index');
+            removeFilter(index);
+        });
+
+        // Update filter fields on change
+        $(document).on('change', '.filter-row select, .filter-row input', function() {
+            var $row = $(this).closest('.filter-row');
+            var index = $row.data('index');
+            var field = $(this).data('field');
+            var value = $(this).val();
+            updateFilter(index, field, value);
+        });
+
+        // Searchable dropdown - toggle open/close
+        $(document).on('click', '.searchable-dropdown .dropdown-selected', function(e) {
+            e.stopPropagation();
+            var $dropdown = $(this).closest('.searchable-dropdown');
+            var wasOpen = $dropdown.hasClass('open');
+
+            // Close all dropdowns
+            $('.searchable-dropdown').removeClass('open');
+
+            if (!wasOpen) {
+                $dropdown.addClass('open');
+                $dropdown.find('.dropdown-search').val('').focus();
+                $dropdown.find('.dropdown-option').removeClass('hidden');
+            }
+        });
+
+        // Searchable dropdown - search
+        $(document).on('input', '.searchable-dropdown .dropdown-search', function(e) {
+            e.stopPropagation();
+            var searchTerm = $(this).val().toLowerCase();
+            var $dropdown = $(this).closest('.searchable-dropdown');
+
+            $dropdown.find('.dropdown-option').each(function() {
+                var text = $(this).text().toLowerCase();
+                var value = $(this).data('value').toString().toLowerCase();
+                if (searchTerm === '' || text.indexOf(searchTerm) !== -1 || value.indexOf(searchTerm) !== -1) {
+                    $(this).removeClass('hidden');
+                } else {
+                    $(this).addClass('hidden');
+                }
+            });
+        });
+
+        // Searchable dropdown - prevent close when clicking search
+        $(document).on('click', '.searchable-dropdown .dropdown-search', function(e) {
+            e.stopPropagation();
+        });
+
+        // Searchable dropdown - select option
+        $(document).on('click', '.searchable-dropdown .dropdown-option', function(e) {
+            e.stopPropagation();
+            var $dropdown = $(this).closest('.searchable-dropdown');
+            var $row = $dropdown.closest('.filter-row');
+            var index = $row.data('index');
+            var value = $(this).data('value');
+            var label = $(this).text();
+
+            // Update UI
+            $dropdown.find('.selected-text').text(label);
+            $dropdown.find('.dropdown-option').removeClass('selected');
+            $(this).addClass('selected');
+            $dropdown.attr('data-value', value);
+            $dropdown.removeClass('open');
+
+            // Update filter data
+            updateFilter(index, 'dimension', value);
+        });
+
+        // Close dropdowns when clicking outside
+        $(document).on('click', function() {
+            $('.searchable-dropdown').removeClass('open');
+        });
+
+        // Delete all feeds button
+        $('#btn-delete-all-feeds').on('click', function() {
+            if (!confirm('Are you sure you want to delete ALL feeds? This action cannot be undone.')) {
+                return;
+            }
+            if (!confirm('This will permanently delete all your data feed configurations. Are you absolutely sure?')) {
+                return;
+            }
+
+            var ajaxRequest = new ajaxHelper();
+            ajaxRequest.addParams({
+                module: 'API',
+                method: 'CustomDataFeedExport.deleteAllFeeds',
+                format: 'JSON'
+            }, 'get');
+            ajaxRequest.addParams({
+                idSite: idSite
+            }, 'post');
+            ajaxRequest.setCallback(function(data) {
+                alert('All feeds have been deleted.');
+                loadFeeds();
+            });
+            ajaxRequest.setErrorCallback(function(xhr) {
+                alert('Error deleting feeds. Please try again.');
+            });
+            ajaxRequest.send();
+        });
+
+        $(document).on('click', '.btn-copy-token', function() {
+            var $btn   = $(this);
+            var token  = $btn.data('token');
+            if (navigator.clipboard && token) {
+                navigator.clipboard.writeText(token).then(function() {
+                    var orig = $btn.text();
+                    $btn.text('Copied!');
+                    setTimeout(function() { $btn.text(orig); }, 2000);
+                });
+            }
+        });
+
+        $(document).on('click', '.btn-edit', function() {
+            editFeed($(this).data('id'));
+        });
+
+        $(document).on('click', '.btn-delete', function() {
+            deleteFeed($(this).data('id'));
+        });
+
+        $(document).on('click', '.btn-export', function() {
+            showExportForm($(this).data('id'), $(this).data('name'));
+        });
+    });
+})(jQuery);
+</script>
+{% endblock %}
